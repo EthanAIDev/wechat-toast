@@ -1,6 +1,6 @@
 # wechat-toast
 
-适用于 Windows 的微信 4.x 桌面消息弹窗提醒工具。
+适用于 Windows 的微信 4.x 桌面消息弹窗提醒工具，支持浮层通知/win系统通知。
 
 本项目基于 [fenqijun/wechat-notifier](https://github.com/fenqijun/wechat-notifier) 修改而成，当前版本主要面向微信 4.x，重点优化了未读会话扫描、本地浮层通知样式和回退探测逻辑。
 
