@@ -1,75 +1,77 @@
-# Windows微信消息弹窗通知工具
+# wechat-toast
 
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/b328aeb1-ceb4-4366-ade6-0acff4ddd4fe" width="600" alt="界面示意图">
-  <br>
-  
-  [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
-  
-  > 🔔 **重要提醒**  
-  > 建议置顶聊天不超过5个，否则可能遮挡会话导致无法通知。（暂不支持微信4.0版本）
-</div>
+适用于 Windows 的微信 4.x 桌面消息弹窗提醒工具。
 
----
+本项目基于 [fenqijun/wechat-notifier](https://github.com/fenqijun/wechat-notifier) 修改而成，当前版本主要面向微信 4.x，重点优化了未读会话扫描、本地浮层通知样式和回退探测逻辑。
 
-## 📥 版本下载
-```diff
-+ 最新稳定版：微信消息提醒-1.0-win64.zip 
-! 已弃用版本：~~微信消息通知.exe~~（不再维护）
+## 功能
+
+- 支持微信桌面版 4.x
+- 只提醒未读消息，尽量避免误读自己发出的内容
+- 默认使用本地浮层通知，也支持 Windows 系统通知
+- 同一会话连续来消息时，会直接刷新同一张通知卡片
+- 显示未读数量和最新一条消息摘要
+- 支持过滤折叠聊天、公众号、服务号、免打扰等干扰项
+
+## 示例图
+
+![通知效果示例](./test_pic.png)
+
+## 运行环境
+
+- Windows 10 / 11
+- 微信桌面版 4.x
+- Python 3.10+（推荐）
+
+## 安装依赖
+
+```powershell
+pip install -r requirements.txt
 ```
 
-## 功能 ✨
+## 启动方式
 
-- **实时监控**：自动检测微信窗口消息变化
-- **智能过滤**：排除时间戳和系统干扰信息
-- **频率控制**：5秒内超过3条消息自动聚合
-- **多消息支持**：
-  - 文本消息
-  - 语音提示
-  - 转账提醒
-  - 红包通知
-- **日志系统**：完整记录运行状态和错误信息
-- **开机自启**： 默认开机自动启动
-
-## 运行要求 🖥️
-
-- Windows 10/11 系统
-- 微信桌面版 3.9+
-- Python 3.7+
-
-## 快速开始 🚀
-
-### 安装依赖
-```bash
-pip install uiautomation==2.0.15 winotify==0.3.0 psutil==5.9.0 pywin32==306
-```
-### 配置说明
-1. 修改微信图标路径（可选）
-
-# 微信通知.py 第35行
-```
-icon=r"C:\path\to\wechat.png"
+```powershell
+python .\wechat-toast.py
 ```
 
+如果你使用项目内虚拟环境：
 
-### 核心依赖
-| 包名称         | 版本     | 用途描述                  |
-|----------------|----------|-------------------------|
-| uiautomation   | 2.0.15   | Windows UI自动化控制       |
-| winotify       | 0.3.0    | 系统通知中心集成           |
-| psutil         | 5.9.0    | 进程监控与管理             |
-| pywin32        | 306      | Windows API集成          |
+```powershell
+.\.venv\Scripts\python.exe .\wechat-toast.py
+```
 
-### 开发依赖
-| 包名称         | 版本     | 用途描述                  |
-|----------------|----------|-------------------------|
-| pythoncom      | 内置      | COM组件支持              |
-| ctypes         | 内置      | C语言接口调用            |
+## 常用配置
 
-## 常见问题 ❓
-### 通知不显示？
-✅ 检查：
+配置位于 [wechat-toast.py](./wechat-toast.py) 顶部。
 
-1. 系统通知权限是否开启
-2. 微信窗口是否保持前台打开
-3. 图标路径是否正确
+- `NOTIFICATION_MODE = "overlay"`：本地浮层通知，默认推荐
+- `NOTIFICATION_MODE = "system"`：Windows 系统通知
+- `WECHAT_NOTIFIER_LOG_LEVEL=DEBUG`：开启调试日志
+
+## 已知问题
+
+当前版本已经可以满足基本使用，但仍有以下已知问题：
+
+1. 只有当微信主界面处于前台可见状态时，程序才能稳定生效。  
+   未显示在前台时参考：![未显示在前台](./未显示在前台.png)  
+   已显示在前台时参考：![显示在前台](./显示在前台.png)
+
+2. 点击通知后，目前可以拉起微信主窗口，但还不能自动精确定位到对应会话，后续会继续考虑修复。
+
+3. 当鼠标悬浮在任务栏中闪烁的微信图标上时，可能会再次触发一次通知，后续会继续考虑修复。
+
+## 更新记录
+
+### 当前版本
+
+- 合并为单文件入口 `wechat-toast.py`
+- 完全转向微信 4.x 桌面版适配
+- 重做本地浮层通知样式与布局
+- 增强未读会话探测与多层回退逻辑
+- 将微信图标内嵌到代码中，不再依赖额外图片文件
+
+## 致谢
+
+- 上游项目：[fenqijun/wechat-notifier](https://github.com/fenqijun/wechat-notifier)
+- 本项目当前版本的设计、调试、重构与实现过程，全程主要通过 Codex 协作完成
