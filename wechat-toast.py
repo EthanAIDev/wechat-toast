@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import re
 import threading
@@ -10,6 +11,7 @@ import tempfile
 import win32gui
 import win32process
 import win32api
+import win32con
 import psutil
 import ctypes
 import logging
@@ -27,14 +29,24 @@ DEFAULT_LOG_LEVEL_NAME = os.environ.get("WECHAT_NOTIFIER_LOG_LEVEL", "INFO").upp
 LOG_LEVEL = getattr(logging, DEFAULT_LOG_LEVEL_NAME, logging.INFO)
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def get_app_base_dir():
+    """返回程序运行目录，兼容源码运行和 PyInstaller 打包运行。"""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+BASE_DIR = get_app_base_dir()
+LOG_FILE_PATH = os.path.join(BASE_DIR, "wechat-toast.log")
 EMBEDDED_ICON_PATH = None
+EMBEDDED_TRAY_ICON_PATH = None
 WX_LOGO_BASE64 = "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"
 
 # 微信窗口信息
 WECHAT_WINDOW_NAMES = ("微信", "WeChat", "Weixin")
 WECHAT_PROCESS_NAMES = ("WeChat.exe", "WeChatAppEx.exe")
 WECHAT_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
+WECHAT_MAIN_WINDOW_CLASS_PREFIXES = ("mmui::", "Chrome_WidgetWin_")
 V4_LIST_CLASS_NAMES = {"mmui::RecyclerListView", "mmui::XTableView"}
 V4_LIST_CONTROL_TYPES = {"ListControl"}
 V4_LIST_ITEM_CONTROL_TYPES = {"ListItemControl", "DataItemControl"}
@@ -141,11 +153,194 @@ overlay_queue = queue.Queue()
 overlay_manager_ready = threading.Event()
 overlay_manager_thread = None
 overlay_logo_images = {}
+shutdown_event = threading.Event()
+tray_controller = None
+TRAY_ICON_TOOLTIP = "wechat-toast"
+TRAY_EXIT_MENU_ID = 1001
+TRAY_NOTIFY_MESSAGE = win32con.WM_APP + 1
+BROWSER_PAGE_KEYWORDS = ("重新加载", "点按该按钮可后退", "点按该按钮可前进")
 last_v4_probe_state = None
 last_v4_probe_at = 0.0
 last_v4_session_list = None
 last_v4_session_list_at = 0.0
 v4_session_list_failure_streak = 0
+
+
+def wait_or_stop(seconds):
+    return shutdown_event.wait(seconds)
+
+
+def request_shutdown(reason="收到退出请求"):
+    if not shutdown_event.is_set():
+        logging.info(reason)
+        shutdown_event.set()
+
+
+class SystemTrayController:
+    def __init__(self, tooltip=TRAY_ICON_TOOLTIP):
+        self.tooltip = tooltip
+        self.class_name = f"WechatToastTrayWindow_{os.getpid()}"
+        self.window_title = "wechat-toast tray"
+        self.hwnd = None
+        self.hicon = None
+        self.thread = None
+        self.ready = threading.Event()
+        self.taskbar_created_message = win32gui.RegisterWindowMessage("TaskbarCreated")
+
+    def start(self):
+        if self.thread and self.thread.is_alive():
+            return
+
+        self.ready.clear()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        self.ready.wait(timeout=3)
+
+    def stop(self):
+        hwnd = self.hwnd
+        if not hwnd:
+            return
+        try:
+            if win32gui.IsWindow(hwnd):
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+        except Exception as e:
+            logging.debug(f"关闭托盘图标失败: {e}")
+
+    def _create_window(self):
+        hinstance = win32api.GetModuleHandle(None)
+        wnd_class = win32gui.WNDCLASS()
+        wnd_class.hInstance = hinstance
+        wnd_class.lpszClassName = self.class_name
+        wnd_class.lpfnWndProc = self._wnd_proc
+        try:
+            win32gui.RegisterClass(wnd_class)
+        except win32gui.error:
+            pass
+
+        self.hwnd = win32gui.CreateWindow(
+            self.class_name,
+            self.window_title,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            hinstance,
+            None,
+        )
+
+    def _load_icon(self):
+        self.hicon = None
+
+        if getattr(sys, "frozen", False):
+            try:
+                large_icons, small_icons = win32gui.ExtractIconEx(sys.executable, 0)
+                if small_icons:
+                    self.hicon = small_icons[0]
+                elif large_icons:
+                    self.hicon = large_icons[0]
+            except Exception as e:
+                logging.debug(f"从可执行文件提取托盘图标失败: {e}")
+
+        if not self.hicon and not getattr(sys, "frozen", False):
+            try:
+                self.hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
+            except Exception:
+                self.hicon = None
+
+        if not self.hicon:
+            try:
+                self.hicon = win32gui.LoadImage(
+                    0,
+                    get_tray_icon_path(),
+                    win32con.IMAGE_ICON,
+                    0,
+                    0,
+                    win32con.LR_DEFAULTSIZE | win32con.LR_LOADFROMFILE,
+                )
+            except Exception:
+                self.hicon = None
+
+        if not self.hicon:
+            self.hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
+
+    def _notify_icon(self, action):
+        if not self.hwnd:
+            return
+        flags = win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP
+        notify_id = (self.hwnd, 0, flags, TRAY_NOTIFY_MESSAGE, self.hicon, self.tooltip)
+        win32gui.Shell_NotifyIcon(action, notify_id)
+
+    def _show_menu(self):
+        if not self.hwnd:
+            return
+
+        menu = win32gui.CreatePopupMenu()
+        try:
+            win32gui.AppendMenu(menu, win32con.MF_STRING, TRAY_EXIT_MENU_ID, "退出")
+            x, y = win32gui.GetCursorPos()
+            win32gui.SetForegroundWindow(self.hwnd)
+            win32gui.TrackPopupMenu(
+                menu,
+                win32con.TPM_LEFTALIGN | win32con.TPM_RIGHTBUTTON,
+                x,
+                y,
+                0,
+                self.hwnd,
+                None,
+            )
+            win32gui.PostMessage(self.hwnd, win32con.WM_NULL, 0, 0)
+        finally:
+            win32gui.DestroyMenu(menu)
+
+    def _wnd_proc(self, hwnd, msg, wparam, lparam):
+        if msg == self.taskbar_created_message:
+            self._notify_icon(win32gui.NIM_ADD)
+            return 0
+
+        if msg == TRAY_NOTIFY_MESSAGE:
+            if lparam in (win32con.WM_RBUTTONUP, win32con.WM_CONTEXTMENU, win32con.WM_LBUTTONUP):
+                self._show_menu()
+            return 0
+
+        if msg == win32con.WM_COMMAND:
+            if (wparam & 0xFFFF) == TRAY_EXIT_MENU_ID:
+                request_shutdown("用户从托盘菜单退出程序")
+                win32gui.DestroyWindow(hwnd)
+                return 0
+
+        if msg == win32con.WM_CLOSE:
+            win32gui.DestroyWindow(hwnd)
+            return 0
+
+        if msg == win32con.WM_DESTROY:
+            try:
+                self._notify_icon(win32gui.NIM_DELETE)
+            except Exception:
+                pass
+            win32gui.PostQuitMessage(0)
+            return 0
+
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
+
+    def _run(self):
+        try:
+            self._create_window()
+            self._load_icon()
+            self._notify_icon(win32gui.NIM_ADD)
+        except Exception as e:
+            logging.error(f"启动托盘图标失败: {e}")
+        finally:
+            self.ready.set()
+
+        try:
+            win32gui.PumpMessages()
+        except Exception as e:
+            logging.error(f"托盘消息循环异常: {e}")
+        finally:
+            self.hwnd = None
 
 
 class RECT(ctypes.Structure):
@@ -211,6 +406,11 @@ def get_wechat_process_info():
         }
     return None
 
+def is_wechat_main_window_class(class_name):
+    class_name = class_name or ""
+    return any(class_name.startswith(prefix) for prefix in WECHAT_MAIN_WINDOW_CLASS_PREFIXES)
+
+
 def get_wechat_process_ids():
     """获取所有微信相关进程 ID"""
     process_ids = []
@@ -243,7 +443,7 @@ def get_wechat_main_hwnd():
             if class_name == "mmui::MainWindow":
                 matched_handles.append(hwnd)
                 return
-            if title in WECHAT_WINDOW_NAMES and isinstance(class_name, str) and class_name.startswith("mmui::"):
+            if title in WECHAT_WINDOW_NAMES and isinstance(class_name, str) and is_wechat_main_window_class(class_name):
                 matched_handles.append(hwnd)
         except Exception:
             return
@@ -369,13 +569,14 @@ def is_wechat_v4(version, process_name=None, exe_path=None):
         return False
 
 
-def collect_window_handles(target_pids=None):
+def collect_window_handles(target_pids=None, include_hidden=False):
     handles = []
     pid_set = set(target_pids or [])
 
     def callback(hwnd, _):
         try:
-            if not win32gui.IsWindowVisible(hwnd):
+            visible = bool(win32gui.IsWindowVisible(hwnd))
+            if not include_hidden and not visible:
                 return
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             title = win32gui.GetWindowText(hwnd)
@@ -385,9 +586,9 @@ def collect_window_handles(target_pids=None):
                 return
 
             title_match = title in WECHAT_WINDOW_TITLES
-            class_match = isinstance(class_name, str) and class_name.startswith("mmui::")
+            class_match = isinstance(class_name, str) and is_wechat_main_window_class(class_name)
             if title_match or class_match:
-                handles.append(hwnd)
+                handles.append((hwnd, visible))
         except Exception:
             return
 
@@ -412,7 +613,7 @@ def is_main_window(control):
     class_name = getattr(control, "ClassName", "") or ""
     title = getattr(control, "Name", "") or ""
     return class_name == "mmui::MainWindow" or (
-        class_name.startswith("mmui::") and title in WECHAT_WINDOW_TITLES
+        is_wechat_main_window_class(class_name) and title in WECHAT_WINDOW_TITLES
     )
 
 
@@ -444,6 +645,17 @@ def iter_descendants(root_control, max_depth=10, max_nodes=3000):
                 queue_items.append((child, depth + 1))
             except Exception:
                 continue
+
+
+def is_browser_page_window(control):
+    for child in iter_descendants(control, max_depth=4, max_nodes=120):
+        try:
+            text = getattr(child, "Name", "") or ""
+            if any(keyword in text for keyword in BROWSER_PAGE_KEYWORDS):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def is_list_control(control):
@@ -578,57 +790,14 @@ def collect_lists_by_search(root_control, limit=10):
     return lists
 
 
-def collect_wechat_state(target_pids=None):
-    candidates = []
-    state = {
-        "windows": [],
-        "main_window": None,
-        "lists": [],
-    }
-
-    for hwnd in collect_window_handles(target_pids):
-        try:
-            window = auto.ControlFromHandle(hwnd)
-            if not window:
-                continue
-            state["windows"].append(control_snapshot(window, hwnd=hwnd))
-            candidates.append((hwnd, window))
-        except Exception:
-            continue
-
-    main_window = None
-    main_hwnd = 0
-    for hwnd, window in candidates:
-        try:
-            if is_main_window(window):
-                main_window = window
-                main_hwnd = hwnd
-                break
-        except Exception:
-            continue
-
-    if main_window is None:
-        for hwnd, window in candidates:
-            try:
-                class_name = getattr(window, "ClassName", "") or ""
-                if class_name.startswith("mmui::"):
-                    main_window = window
-                    main_hwnd = hwnd
-                    break
-            except Exception:
-                continue
-
-    if main_window is None:
-        return state
-
-    state["main_window"] = control_snapshot(main_window, hwnd=main_hwnd)
-
-    for control in iter_descendants(main_window, max_depth=10, max_nodes=3000):
+def collect_lists_from_window(window):
+    lists = []
+    for control in iter_descendants(window, max_depth=10, max_nodes=3000):
         try:
             if not is_list_control(control):
                 continue
             items = collect_list_items(control)
-            state["lists"].append(
+            lists.append(
                 {
                     "title": getattr(control, "Name", "") or "",
                     "class_name": getattr(control, "ClassName", "") or "",
@@ -639,19 +808,19 @@ def collect_wechat_state(target_pids=None):
         except Exception:
             continue
 
-    if not state["lists"]:
-        state["lists"].extend(collect_lists_by_search(main_window))
+    if not lists:
+        lists.extend(collect_lists_by_search(window))
 
     has_session_list = any(
         any((item.get("automation_id") or "").startswith("session_item_") for item in list_state.get("items", []))
-        for list_state in state["lists"]
+        for list_state in lists
     )
     if not has_session_list:
-        synthetic_items = collect_session_items_by_search(main_window)
+        synthetic_items = collect_session_items_by_search(window)
         if not synthetic_items:
-            synthetic_items = collect_session_items_from_descendants(main_window)
+            synthetic_items = collect_session_items_from_descendants(window)
         if synthetic_items:
-            state["lists"].append(
+            lists.append(
                 {
                     "title": "会话",
                     "class_name": "synthetic::session_list",
@@ -660,6 +829,90 @@ def collect_wechat_state(target_pids=None):
                 }
             )
 
+    return lists
+
+
+def has_session_items(lists):
+    return any(
+        any((item.get("automation_id") or "").startswith("session_item_") for item in list_state.get("items", []))
+        for list_state in lists
+    )
+
+
+def choose_best_main_window(candidates):
+    best = None
+    best_score = -1
+
+    for candidate in candidates:
+        score = 0
+        window = candidate["window"]
+        visible = candidate["visible"]
+        snapshot = candidate["snapshot"]
+        lists = candidate["lists"]
+
+        if is_main_window(window):
+            score += 4
+        elif is_wechat_main_window_class(snapshot.get("class_name", "")):
+            score += 2
+
+        if has_session_items(lists):
+            score += 100
+        elif lists:
+            score += 10
+
+        if not candidate["is_browser"]:
+            score += 20
+
+        if visible:
+            score += 3
+
+        candidate["score"] = score
+        if score > best_score:
+            best = candidate
+            best_score = score
+
+    return best
+
+
+def collect_wechat_state(target_pids=None):
+    candidates = []
+    state = {
+        "windows": [],
+        "main_window": None,
+        "main_window_view": None,
+        "lists": [],
+    }
+
+    for hwnd, visible in collect_window_handles(target_pids, include_hidden=True):
+        try:
+            window = auto.ControlFromHandle(hwnd)
+            if not window:
+                continue
+            snapshot = control_snapshot(window, hwnd=hwnd)
+            snapshot["visible"] = visible
+            state["windows"].append(snapshot)
+            candidate = {
+                "hwnd": hwnd,
+                "visible": visible,
+                "window": window,
+                "snapshot": snapshot,
+                "is_browser": is_browser_page_window(window),
+                "lists": collect_lists_from_window(window),
+            }
+            candidates.append(candidate)
+        except Exception:
+            continue
+
+    if not candidates:
+        return state
+
+    chosen = choose_best_main_window(candidates)
+    if chosen is None:
+        return state
+
+    state["main_window"] = dict(chosen["snapshot"])
+    state["main_window_view"] = "browser" if chosen["is_browser"] else "chat"
+    state["lists"] = chosen["lists"]
     return state
 
 def find_wechat_window_v4():
@@ -931,6 +1184,11 @@ def get_v4_session_list(main_window, allow_refresh=True):
     if cached_session_list is not None:
         logging.debug("本轮未实时获取到微信 4.x 会话列表，回退到最近一次成功快照")
         return cached_session_list
+
+    if isinstance(main_window, dict) and main_window.get("main_window_view") == "browser":
+        logging.error("当前位于微信文章页或内置浏览器页，未暴露聊天会话列表；请切回微信聊天主界面后再监控未读消息。")
+    else:
+        logging.error("已找到微信主窗口，但未识别到会话列表。请切回微信聊天主界面，并避免停留在文章、网页或小程序页面。")
     return None
 
 def get_v4_total_unread_count(chats_button):
@@ -1160,14 +1418,15 @@ def monitor_wechat_messages_v4():
     global v4_session_list_failure_streak
     logging.info("开始监控微信 4.x 消息...")
     loop_count = 0
-    while True:
+    while not shutdown_event.is_set():
         try:
             loop_count += 1
             logging.debug(f"微信 4.x 监控轮次: {loop_count}")
             main_window = find_wechat_window_v4()
             if not main_window:
                 logging.debug("当前未找到微信 4.x 主窗口，2 秒后重试")
-                time.sleep(2)
+                if wait_or_stop(2):
+                    break
                 continue
 
             unread_sessions = scan_wechat_messages_v4(main_window)
@@ -1223,7 +1482,8 @@ def monitor_wechat_messages_v4():
             else:
                 logging.error(f"监控微信 4.x 失败: {e}")
 
-        time.sleep(V4_MONITOR_INTERVAL)
+        if wait_or_stop(V4_MONITOR_INTERVAL):
+            break
 
 def monitor_wechat_messages():
     """监控微信消息"""
@@ -1235,7 +1495,7 @@ def monitor_wechat_messages():
 
     logging.info("开始监控微信消息...")
     try:
-        while True:
+        while not shutdown_event.is_set():
             try:
                 # 递归扫描所有控件，包括隐藏的
                 def scan_controls(control):
@@ -1257,7 +1517,8 @@ def monitor_wechat_messages():
                         
             except Exception as e:
                 logging.error(f"监控失败: {e}")
-            time.sleep(SCAN_INTERVAL)
+            if wait_or_stop(SCAN_INTERVAL):
+                break
     finally:
         pythoncom.CoUninitialize()
 
@@ -1379,6 +1640,59 @@ def get_overlay_logo_image(layout):
         logging.debug(f"加载浮层微信图标失败: {e}")
         overlay_logo_images[cache_key] = None
         return None
+
+
+def build_ico_bytes_from_png(png_bytes):
+    width = int.from_bytes(png_bytes[16:20], "big")
+    height = int.from_bytes(png_bytes[20:24], "big")
+    header = (0).to_bytes(2, "little") + (1).to_bytes(2, "little") + (1).to_bytes(2, "little")
+    entry = bytes([width if width < 256 else 0, height if height < 256 else 0, 0, 0])
+    entry += (1).to_bytes(2, "little")
+    entry += (32).to_bytes(2, "little")
+    entry += len(png_bytes).to_bytes(4, "little")
+    entry += (22).to_bytes(4, "little")
+    return header + entry + png_bytes
+
+
+def get_tray_icon_path():
+    """为系统托盘提供一个临时 ico 图标文件路径"""
+    global EMBEDDED_TRAY_ICON_PATH
+    if EMBEDDED_TRAY_ICON_PATH and os.path.exists(EMBEDDED_TRAY_ICON_PATH):
+        return EMBEDDED_TRAY_ICON_PATH
+
+    try:
+        icon_dir = os.path.join(tempfile.gettempdir(), "wechat-toast")
+        os.makedirs(icon_dir, exist_ok=True)
+        icon_path = os.path.join(icon_dir, "wx_logo.ico")
+        if not os.path.exists(icon_path):
+            with open(icon_path, "wb") as icon_file:
+                icon_file.write(build_ico_bytes_from_png(base64.b64decode(WX_LOGO_BASE64)))
+        EMBEDDED_TRAY_ICON_PATH = icon_path
+        return EMBEDDED_TRAY_ICON_PATH
+    except Exception as e:
+        logging.error(f"写出托盘图标失败: {e}")
+        return None
+
+
+def show_status_notification(title, message, duration_ms=OVERLAY_DURATION_MS, overlay_key=None):
+    """发送状态类提示，例如启动成功、等待微信、依赖缺失等。"""
+    try:
+        icon_path = get_notification_icon_path()
+        if is_notification_mode("system"):
+            toast = Notification(
+                app_id="wechat-toast",
+                title=title,
+                msg=message,
+                icon=icon_path,
+                duration="short"
+            )
+            toast.set_audio(NOTIFICATION_SOUND, loop=False)
+            toast.show()
+        else:
+            show_overlay_popup(title, message, duration_ms=duration_ms, overlay_key=overlay_key or f"status:{title}")
+        logging.info(f"状态提示已发送: {title} - {message}")
+    except Exception as e:
+        logging.error(f"发送状态提示失败: {e}")
 
 
 def get_notification_icon_path():
@@ -1882,85 +2196,97 @@ def extract_message_content(control):
 
 def main():
     """主函数"""
-    # 检查微信是否运行
-    wechat_info = get_wechat_process_info()
-    wechat_process = wechat_info["process"] if wechat_info else None
-    
-    if not wechat_process:
-        # 发送通知提醒用户启动微信
-        toast = Notification(
-            app_id="微信监控",
-            title="微信未运行",
-            msg="请先启动微信客户端，程序将在微信启动后自动运行",
-            icon=get_notification_icon_path(),
-            duration="short"
-        )
-        toast.set_audio(NOTIFICATION_SOUND, loop=False)
-        toast.show()
-        logging.error("微信未运行")
-        
-        # 持续检测微信进程
-        while not wechat_process:
-            time.sleep(2)  # 每2秒检查一次
-            wechat_info = get_wechat_process_info()
-            wechat_process = wechat_info["process"] if wechat_info else None
+    global tray_controller
 
-    wechat_version = wechat_info.get("version") if wechat_info else None
-    wechat_process_name = wechat_info.get("process_name") if wechat_info else None
-    wechat_exe_path = wechat_info.get("exe_path") if wechat_info else None
-    if wechat_process_name:
-        logging.info(f"检测到微信进程: {wechat_process_name}")
-    if wechat_version:
-        logging.info(f"检测到微信版本: {wechat_version}")
+    tray_controller = SystemTrayController()
+    tray_controller.start()
 
-    if is_wechat_v4(wechat_version, wechat_process_name, wechat_exe_path):
-        if Desktop is None:
-            toast = Notification(
-                app_id="微信监控",
-                title="缺少微信 4.x 依赖",
-                msg="请先安装 pywinauto 以启用微信 4.x 监控。",
-                icon=get_notification_icon_path(),
-                duration="short"
+    try:
+        # 检查微信是否运行
+        wechat_info = get_wechat_process_info()
+        wechat_process = wechat_info["process"] if wechat_info else None
+
+        if not wechat_process:
+            show_status_notification(
+                "微信未运行",
+                "请先启动微信客户端，程序将在微信启动后自动运行",
+                overlay_key="status:wechat-not-running",
             )
-            toast.set_audio(NOTIFICATION_SOUND, loop=False)
-            toast.show()
-            logging.error("检测到微信 4.x，但当前环境未安装 pywinauto。")
+            logging.error("微信未运行")
+
+            while not wechat_process and not shutdown_event.is_set():
+                if wait_or_stop(2):
+                    return
+                wechat_info = get_wechat_process_info()
+                wechat_process = wechat_info["process"] if wechat_info else None
+
+        if shutdown_event.is_set():
             return
 
-        logging.info("检测到微信 4.x，启用 pywinauto 兼容监控。")
-        try:
-            monitor_wechat_messages_v4()
-        except KeyboardInterrupt:
-            logging.info("程序已停止")
-        return
-    
-    # 等待并检测微信窗口
-    wechat_window = find_wechat_window()
-    if not wechat_window:
-        toast = Notification(
-            app_id="微信监控",
-            title="等待微信窗口",
-            msg="请确保微信窗口已打开，程序将在检测到窗口后自动运行",
-            icon=get_notification_icon_path(),
-            duration="short"
+        wechat_version = wechat_info.get("version") if wechat_info else None
+        wechat_process_name = wechat_info.get("process_name") if wechat_info else None
+        wechat_exe_path = wechat_info.get("exe_path") if wechat_info else None
+        if wechat_process_name:
+            logging.info(f"检测到微信进程: {wechat_process_name}")
+        if wechat_version:
+            logging.info(f"检测到微信版本: {wechat_version}")
+
+        if is_wechat_v4(wechat_version, wechat_process_name, wechat_exe_path):
+            if Desktop is None:
+                show_status_notification(
+                    "缺少微信 4.x 依赖",
+                    "请先安装 pywinauto 以启用微信 4.x 监控。",
+                    overlay_key="status:missing-pywinauto",
+                )
+                logging.error("检测到微信 4.x，但当前环境未安装 pywinauto。")
+                return
+
+            show_status_notification(
+                "wechat-toast 已启动",
+                "正在后台监控微信消息，可在任务栏托盘图标右键退出。",
+                overlay_key="status:started",
+            )
+            logging.info("检测到微信 4.x，启用 pywinauto 兼容监控。")
+            try:
+                monitor_wechat_messages_v4()
+            except KeyboardInterrupt:
+                request_shutdown("用户通过键盘中断停止程序")
+            return
+
+        wechat_window = find_wechat_window()
+        if not wechat_window:
+            show_status_notification(
+                "等待微信窗口",
+                "请确保微信窗口已打开，程序将在检测到窗口后自动运行",
+                overlay_key="status:waiting-window",
+            )
+
+            while not wechat_window and not shutdown_event.is_set():
+                if wait_or_stop(2):
+                    return
+                wechat_window = find_wechat_window()
+
+        if shutdown_event.is_set():
+            return
+
+        monitor_thread = threading.Thread(target=monitor_wechat_messages, daemon=True)
+        monitor_thread.start()
+
+        show_status_notification(
+            "wechat-toast 已启动",
+            "正在后台监控微信消息，可在任务栏托盘图标右键退出。",
+            overlay_key="status:started",
         )
-        toast.set_audio(NOTIFICATION_SOUND, loop=False)
-        toast.show()
-        
-        # 持续检测微信窗口
-        while not wechat_window:
-            time.sleep(2)  # 每2秒检查一次
-            wechat_window = find_wechat_window()
-    
-    # 启动监控线程
-    monitor_thread = threading.Thread(target=monitor_wechat_messages, daemon=True)
-    monitor_thread.start()
-    
-    # 主线程保持运行
-    try:
-        while True:
-            time.sleep(1)
+
+        while not shutdown_event.is_set():
+            if wait_or_stop(1):
+                break
     except KeyboardInterrupt:
+        request_shutdown("用户通过键盘中断停止程序")
+    finally:
+        request_shutdown("程序正在退出")
+        if tray_controller:
+            tray_controller.stop()
         logging.info("程序已停止")
 
 if __name__ == "__main__":
@@ -1970,7 +2296,7 @@ if __name__ == "__main__":
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('wechat_monitor.log', encoding='utf-8')
+            logging.FileHandler(LOG_FILE_PATH, encoding='utf-8')
         ],
         force=True
     )

@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 wechat_monitor.log
+wechat-toast.log
+build/
+dist/
+*.spec
